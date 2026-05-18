@@ -1,0 +1,32 @@
+# Secrets
+.env
+
+# Calibrated coordinate files (per-device, never commit real values)
+filter_coords.json
+location_coords.json
+matches_coords.json
+locations.json
+
+# Debug + screenshots — match data, decisions, captured frames
+debug/
+screenshots/
+
+# Captured screenshots and ad-hoc state files
+_state.png
+_*.png
+*.png
+calibrate.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.python-version
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
