@@ -187,6 +187,85 @@ the queue — usually worse than just running small live batches.
   and asks Claude for improvement suggestions. The only feature in
   this repo that doesn't touch the swipe loop.
 
+## Self-correcting calibration drift
+
+The shipped `config.COORDS` are tuned for a Pixel 10 emulator at
+1080x2424 against a specific Hinge build. If the user's setup is the
+same, taps land correctly. If not, you'll see symptoms like:
+
+- A tap that should open a menu does nothing.
+- A tap that should advance a profile force-skips and lands on a
+  different profile (i.e. it hit the wrong button entirely).
+- `vision.find_first_heart` returns coords noticeably different from
+  `COORDS["heart_photo_1"]`.
+
+When this happens, don't just shrug — you can fix it in-session.
+
+### Recipe
+
+1. **Confirm by screenshot**: capture before-state, attempt the tap,
+   capture after-state, visually compare. Don't trust the tap; trust
+   the screenshot pair.
+
+   ```bash
+   adb exec-out screencap -p > /tmp/before.png
+   adb shell input tap <x> <y>
+   sleep 1.2
+   adb exec-out screencap -p > /tmp/after.png
+   ```
+
+2. **Detect the element**: load the before-state PNG and locate the
+   real element center with PIL + numpy + scipy. The same patterns
+   `vision.py` uses for hearts and Send Like work for most icons:
+
+   ```python
+   from PIL import Image
+   import numpy as np
+   from scipy.ndimage import label, find_objects
+
+   img = np.array(Image.open("/tmp/before.png").convert("RGB"))
+   # Look in the region where the element should be (narrow the
+   # search to avoid false positives).
+   region = img[y_lo:y_hi, x_lo:x_hi]
+   # Match by color: dark icons -> gray < ~100, white -> > ~235,
+   # purple Hinge accent -> R~150 G~50 B~180.
+   mask = region.mean(axis=2) < 100
+   labeled, _ = label(mask)
+   for i, sl in enumerate(find_objects(labeled), 1):
+       # Filter by size — most tap targets are 40-150 px square.
+       ...
+   ```
+
+3. **Verify**: tap the new coord, capture, confirm the expected screen
+   appeared. If it did, the coord is right.
+
+4. **Patch `config.py`** with the corrected value. Show the user the
+   diff before writing.
+
+### Patterns by element type
+
+- **Bottom-nav icons**: 5 evenly-spaced slots at y≈2270. Slot centers
+  are screen_width/5 * (slot_index + 0.5). If the nav has moved,
+  re-detect with a brightness peak per column across y=2240-2300.
+- **Heart on photo 1**: vision-detectable as a white ~126x126 circle
+  in the right half (x > 800). Use `vision.find_first_heart` directly
+  to confirm.
+- **Send Like button**: peach pill (R>220, G 190-235, B 170-220),
+  ~595x109. Use `vision.find_send_like`.
+- **Filter chips (top row)**: dark text on white pill outlines around
+  y=225. Detect by finding contiguous dark runs across that band.
+- **Back arrows / close X**: 30-50 px dark icons in the top-left
+  (x<150) at y around the action bar (~200).
+
+### Things NOT to auto-patch
+
+- Anything that requires multiple drags (e.g. the Age slider thumb
+  anchors). Hand those off to `calibrate_filters.py`, which already
+  does the math.
+- Anything that needs the user to confirm a screen-state change
+  (e.g. the location picker flow). Walk the user through it; don't
+  guess.
+
 ## Things to push back on
 
 - Helping a user run this against their primary account.

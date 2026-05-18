@@ -92,8 +92,16 @@ the most useful tool in the repo.
 
 ## Writing your own mode
 
-Two example rubrics ship in `modes/`: `example_lenient.py` (default-LIKE)
-and `example_strict.py` (default-SKIP). Use them as starting points.
+Three example rubrics ship in `modes/`:
+
+- `example_lenient.py` — default-LIKE, generic. Good starting point.
+- `example_strict.py` — default-SKIP, generic. The antonym.
+- `cougar.py` — a themed mode: older age band (33-44) with playful
+  young-buck premades. Shows how to combine `AGE_MIN/MAX`, an inline
+  `MESSAGE_VOICE`, and themed `PREMADES`. This is the mode behind the
+  framing that got the project some attention. Run it with
+  `python main.py --mode cougar --set-filters` to also drive Hinge's
+  in-app age slider.
 
 - Copy `modes/template.py.example` to `modes/<your_name>.py`.
 - Edit `PREFERENCES` to describe what should and shouldn't get a like.
