@@ -143,10 +143,11 @@ looks wrong: Ctrl-C, edit `PREFERENCES` in your mode file, re-run.
 With Hinge+, bump `MAX_LIKES_PER_SESSION` to 25–50 once decisions
 consistently match your rubric.
 
-> `DRY_RUN = True` in `config.py` runs the judge without sending
-> likes, but every "would-like" profile gets force-skipped and is
-> gone from your queue — usually worse than just running small live
-> batches.
+> **Free tier?** Set `DRY_RUN = True` in `config.py` for the first
+> run or two. It runs the judge without spending likes (every
+> would-like is force-skipped instead), so your 8/day cap survives
+> a rubric you haven't tuned yet. With Hinge+ (unlimited likes),
+> skip dry-run — small live batches are a faster feedback loop.
 
 ## Bonus: scan your own profile
 

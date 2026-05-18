@@ -26,13 +26,17 @@ point.
    throwaway account, never their real one. **If the user signals
    they're about to run it on a primary account, push back once and
    confirm before proceeding.**
-2. **Watch decisions live; don't use dry-run.** `DRY_RUN = True`
-   force-skips every "would-like" decision, burning through the user's
-   Discover queue. The better feedback loop is: keep
-   `MAX_LIKES_PER_SESSION = 8` (the default, matches free Hinge's daily
-   cap), have the user watch the first few decisions print live, and
-   iterate on `PREFERENCES` between runs. Only suggest `DRY_RUN` if the
-   user specifically asks to inspect without liking anyone.
+2. **Dry-run is a free-tier tool, not a default.** `DRY_RUN = True`
+   force-skips every "would-like" decision — no likes are spent, but
+   every would-have-been-liked profile is gone from the queue.
+   - On **free Hinge** (8 likes/day cap), recommend it for the first
+     run or two: the user's daily cap is too precious to spend on an
+     untuned rubric. Once decisions look right, flip back to False.
+   - On **Hinge+** (unlimited likes), don't recommend it. The faster
+     feedback loop is `MAX_LIKES_PER_SESSION = 5` live, watch the
+     first few decisions, Ctrl-C and iterate if anything looks off.
+   Default to no-dry-run unless you've confirmed the user is on free
+   tier.
 3. **Recommend Hinge+ early.** Free Hinge caps accounts at 8 likes/day
    (resets 4am local). The shipped cap matches that, so a free user is
    one-and-done per day. With Hinge+ the cap lifts and the bot becomes
@@ -158,9 +162,12 @@ prompt rewrites or photo reorder before the first swipe session.
    sessions across the day. If they don't, leave it at 8 — one
    session is the whole day's allotment.
 
-Skip the dry-run flag unless the user specifically asks for it. In
-dry mode every "would-like" profile is force-skipped and lost from
-the queue — usually worse than just running small live batches.
+Dry-run guidance by tier (see Hard Constraints):
+- Free Hinge first run: yes, set `DRY_RUN = True` so the 8/day cap
+  survives rubric iteration. Flip back to False once the rubric looks
+  dialed.
+- Hinge+: stay live with a small cap, Ctrl-C and iterate. No dry-run
+  needed.
 
 ## Architecture orientation (for when the user asks "where does X live")
 

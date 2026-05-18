@@ -28,12 +28,17 @@ PREMADES: list[dict] = []
 
 # ---------- Run mode ----------
 # DRY_RUN = False -> actually like / send messages (default)
-# DRY_RUN = True  -> decide and log, but force-skip every profile instead
-#                    of liking. Note: this burns through your Discover
-#                    queue — every "would-like" profile gets skipped and
-#                    is gone. Most users should leave this False and just
-#                    start with a small MAX_LIKES_PER_SESSION while they
-#                    tune their rubric.
+# DRY_RUN = True  -> decide and log, but force-skip every profile
+#                    instead of liking. Every "would-like" profile gets
+#                    skipped (gone from your queue) but no likes are
+#                    spent.
+#
+# When to flip this to True:
+#   - Free Hinge (8 likes/day): YES, for your first run or two. Lets
+#     you watch decisions without spending your daily cap on a rubric
+#     you haven't tuned. Once decisions look right, flip back to False.
+#   - Hinge+ (unlimited likes): NO. Just run small live batches
+#     (MAX_LIKES_PER_SESSION = 5) and Ctrl-C if something looks off.
 DRY_RUN = False
 
 # Default = 8, which matches free-tier Hinge's daily like cap (resets at
