@@ -108,6 +108,7 @@ def do_like(message: str = "") -> None:
         # loop would then type/tap into the void and never advance,
         # producing an infinite-loop on the same profile. Bail to skip
         # instead so the profile advances and the loop survives.
+        save_error_screenshot("heart-not-found")
         raise RuntimeError("vision: couldn't find photo-1 heart after scroll-back")
     adb.tap(*heart_xy)
     adb.jitter_sleep("after_tap")
@@ -121,6 +122,7 @@ def do_like(message: str = "") -> None:
     if send_xy is None:
         # Same reasoning as the heart fallback above — silent fallback
         # masks a real failure and traps the loop. Skip instead.
+        save_error_screenshot("send-like-not-found")
         raise RuntimeError("vision: couldn't find Send Like after heart tap")
     comment_xy = vision.find_comment_input(send_xy)
 
@@ -160,6 +162,15 @@ def do_like(message: str = "") -> None:
             send_xy = post_type_xy
     adb.tap(*send_xy)
     adb.jitter_sleep("after_like_sent")
+
+
+def save_error_screenshot(context: str) -> None:
+    """Capture the current screen and save to debug/errors/ for post-mortem."""
+    errors_dir = config.DEBUG_DIR / "errors"
+    errors_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    png = adb.screenshot()
+    (errors_dir / f"{ts}_{context}.png").write_bytes(png)
 
 
 def save_debug(frames: list[bytes], decision, profile_idx: int) -> None:
@@ -405,6 +416,7 @@ def main() -> int:
                     print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
                     break
             except Exception as e:
+                save_error_screenshot(f"do-like-failed-{profiles_seen}")
                 print(f"do_like failed: {e!r} — recovering by skipping this profile.")
                 try:
                     do_skip()
