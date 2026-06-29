@@ -36,3 +36,7 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Personal mode files (not for commit)
+modes/carlos.py
+voice/carlos.py
