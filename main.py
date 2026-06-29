@@ -254,7 +254,12 @@ def main() -> int:
     print(f"Run:      {'DRY RUN (no taps)' if config.DRY_RUN else 'LIVE (will tap)'}")
     if config.DRY_RUN_MESSAGE:
         print(f"Messages:  DRY RUN (generated but not sent)")
-    print(f"Max likes: {config.MAX_LIKES_PER_SESSION}, "
+    session_like_cap = random.randint(
+        config.SESSION_LIKE_MIN,
+        config.MAX_LIKES_PER_SESSION,
+    )
+    print(f"Max likes: {session_like_cap} (randomized "
+          f"{config.SESSION_LIKE_MIN}-{config.MAX_LIKES_PER_SESSION}), "
           f"max profiles: {config.MAX_PROFILES_PER_SESSION}")
 
     if args.set_filters:
@@ -414,8 +419,8 @@ def main() -> int:
                     "index": profiles_seen,
                 })
                 likes_sent += 1
-                if likes_sent >= config.MAX_LIKES_PER_SESSION:
-                    print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
+                if likes_sent >= session_like_cap:
+                    print(f"Hit max likes cap ({session_like_cap}). Stopping.")
                     break
             except Exception as e:
                 save_error_screenshot(f"do-like-failed-{profiles_seen}")

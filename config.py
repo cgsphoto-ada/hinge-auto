@@ -60,7 +60,12 @@ DRY_RUN_MESSAGE = False
 # run multiple sessions throughout the day. Going much higher per session
 # tends to trigger Hinge's soft-throttle (empty Discover after a burst);
 # spacing batches across the day works better than one giant batch.
+#
+# SESSION_LIKE_MIN sets the floor for random jitter. Each session picks a
+# random cap between SESSION_LIKE_MIN and MAX_LIKES_PER_SESSION so the
+# like count varies per session — looks more human.
 MAX_LIKES_PER_SESSION = 8
+SESSION_LIKE_MIN = 2
 MAX_PROFILES_PER_SESSION = 100
 
 # ---------- Emulator settings ----------
