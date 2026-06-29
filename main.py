@@ -143,7 +143,13 @@ def do_like(message: str = "") -> None:
         # Typed text can wrap to multiple lines, expanding the comment
         # field and pushing Send Like down. Re-find against the post-type
         # screen so the tap lands on the actual button position.
+        #
+        # If Send Like isn't visible, the keyboard may be covering it —
+        # safely dismiss the keyboard (only if confirmed visible) and retry.
         post_type_xy = vision.find_send_like(adb.screenshot())
+        if post_type_xy is None and adb.dismiss_keyboard_if_visible():
+            print("Keyboard was blocking Send Like — dismissed and retrying.")
+            post_type_xy = vision.find_send_like(adb.screenshot())
         if post_type_xy is not None:
             send_xy = post_type_xy
     adb.tap(*send_xy)
