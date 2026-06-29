@@ -256,12 +256,15 @@ def main() -> int:
         print(f"Rotation '{args.rotate}': {rotation_list} (starting at "
               f"index {rotation_idx} = '{rotation_list[rotation_idx]}')")
 
-    print("Starting in 5s. Make sure Hinge is open on the Discover tab.")
+    print("Starting in 5s...")
     time.sleep(5)
 
     # Wake screen and launch Hinge
     adb.wake_screen()
     adb.launch_app("co.hinge.app")
+    # Tap the Discover tab to ensure we're on the main profile feed
+    adb.tap(73, 1468)
+    time.sleep(2)
 
     likes_sent = 0
     skips = 0
