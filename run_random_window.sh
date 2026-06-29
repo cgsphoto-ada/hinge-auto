@@ -4,6 +4,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
+export PATH="/home/ada/.local/bin:/usr/bin:/bin:$PATH"
 
 echo "[$(date)] Starting run..."
 source .venv/bin/activate
