@@ -261,7 +261,7 @@ def main() -> int:
 
     # Wake screen and launch Hinge
     adb.wake_screen()
-    adb.launch_app_am("co.hinge.app")
+    adb.launch_app("co.hinge.app")
 
     likes_sent = 0
     skips = 0
