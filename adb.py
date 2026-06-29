@@ -98,8 +98,30 @@ def wake_screen() -> None:
         time.sleep(1.0)
 
 
+def force_stop_app(package: str) -> None:
+    """Force-stop the app so the next launch starts fresh."""
+    _run(["shell", "am", "force-stop", package])
+    time.sleep(0.5)
+
+
+def dismiss_keyboard_if_visible() -> bool:
+    """Dismiss the soft keyboard if it's currently visible.
+
+    Uses dumpsys input_method to check mInputShown, then sends a single
+    KEYCODE_BACK only when the IME is confirmed visible. Safe to call
+    when the keyboard isn't up — does nothing and returns False.
+    """
+    out = _run(["shell", "dumpsys", "input_method"], capture=True)
+    if out and b"mInputShown=true" in out:
+        _run(["shell", "input", "keyevent", "4"])  # KEYCODE_BACK
+        time.sleep(0.3)
+        return True
+    return False
+
+
 def launch_app(package: str) -> None:
-    """Launch an Android app by package name."""
+    """Launch an Android app by package name. Force-stops first for a clean slate."""
+    force_stop_app(package)
     _run(["shell", "monkey", "-p", package, "1"])
     time.sleep(3.0)
 

@@ -21,6 +21,7 @@ from PIL import Image
 import adb
 import config
 import metrics
+import report
 import vision
 from judge_common import load_backend
 
@@ -107,18 +108,28 @@ def do_like(message: str = "") -> None:
         # loop would then type/tap into the void and never advance,
         # producing an infinite-loop on the same profile. Bail to skip
         # instead so the profile advances and the loop survives.
+        save_error_screenshot("heart-not-found")
         raise RuntimeError("vision: couldn't find photo-1 heart after scroll-back")
     adb.tap(*heart_xy)
     adb.jitter_sleep("after_tap")
 
     send_xy = vision.find_send_like(adb.screenshot())
+    if send_xy is None and adb.dismiss_keyboard_if_visible():
+        # Hinge sometimes auto-focuses the comment field when the compose
+        # card opens, popping the keyboard and covering Send Like.
+        print("Keyboard was blocking initial Send Like — dismissed and retrying.")
+        send_xy = vision.find_send_like(adb.screenshot())
     if send_xy is None:
         # Same reasoning as the heart fallback above — silent fallback
         # masks a real failure and traps the loop. Skip instead.
+        save_error_screenshot("send-like-not-found")
         raise RuntimeError("vision: couldn't find Send Like after heart tap")
     comment_xy = vision.find_comment_input(send_xy)
 
-    if message:
+    if config.DRY_RUN_MESSAGE and message:
+        print(f"DRY_RUN_MESSAGE: would send '{message}' — sending like without it.")
+
+    if message and not config.DRY_RUN_MESSAGE:
         adb.tap(*comment_xy)
         adb.jitter_sleep("after_tap")
         # Snapshot empty-field text-pixel baseline so we can detect when
@@ -143,11 +154,26 @@ def do_like(message: str = "") -> None:
         # Typed text can wrap to multiple lines, expanding the comment
         # field and pushing Send Like down. Re-find against the post-type
         # screen so the tap lands on the actual button position.
+        #
+        # If Send Like isn't visible, the keyboard may be covering it —
+        # safely dismiss the keyboard (only if confirmed visible) and retry.
         post_type_xy = vision.find_send_like(adb.screenshot())
+        if post_type_xy is None and adb.dismiss_keyboard_if_visible():
+            print("Keyboard was blocking Send Like — dismissed and retrying.")
+            post_type_xy = vision.find_send_like(adb.screenshot())
         if post_type_xy is not None:
             send_xy = post_type_xy
     adb.tap(*send_xy)
     adb.jitter_sleep("after_like_sent")
+
+
+def save_error_screenshot(context: str) -> None:
+    """Capture the current screen and save to debug/errors/ for post-mortem."""
+    errors_dir = config.DEBUG_DIR / "errors"
+    errors_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    png = adb.screenshot()
+    (errors_dir / f"{ts}_{context}.png").write_bytes(png)
 
 
 def save_debug(frames: list[bytes], decision, profile_idx: int) -> None:
@@ -226,8 +252,19 @@ def main() -> int:
     )
     print(f"Mode:     {config.MODE_NAME} ({age_band})")
     print(f"Run:      {'DRY RUN (no taps)' if config.DRY_RUN else 'LIVE (will tap)'}")
-    print(f"Max likes: {config.MAX_LIKES_PER_SESSION}, "
+    if config.DRY_RUN_MESSAGE:
+        print(f"Messages:  DRY RUN (generated but not sent)")
+    session_like_cap = random.randint(
+        config.SESSION_LIKE_MIN,
+        config.MAX_LIKES_PER_SESSION,
+    )
+    print(f"Max likes: {session_like_cap} (randomized "
+          f"{config.SESSION_LIKE_MIN}-{config.MAX_LIKES_PER_SESSION}), "
           f"max profiles: {config.MAX_PROFILES_PER_SESSION}")
+
+    if session_like_cap == 0:
+        print("Cap is 0 — skipping this session.")
+        return 0
 
     if args.set_filters:
         if config.AGE_MIN is None and config.AGE_MAX is None:
@@ -256,9 +293,6 @@ def main() -> int:
         print(f"Rotation '{args.rotate}': {rotation_list} (starting at "
               f"index {rotation_idx} = '{rotation_list[rotation_idx]}')")
 
-    print("Starting in 5s...")
-    time.sleep(5)
-
     # Wake screen and launch Hinge
     adb.wake_screen()
     adb.launch_app("co.hinge.app")
@@ -271,6 +305,7 @@ def main() -> int:
     profiles_seen = 0
     total_cost = 0.0
     total_seconds = 0.0
+    liked_profiles: list[dict] = []  # tracked for the webhook report
     last_frame0_hash: str | None = None
     duplicate_streak = 0
 
@@ -382,11 +417,17 @@ def main() -> int:
         if decision.decision == "like":
             try:
                 do_like(decision.message)
+                liked_profiles.append({
+                    "name": decision.name,
+                    "message": decision.message,
+                    "index": profiles_seen,
+                })
                 likes_sent += 1
-                if likes_sent >= config.MAX_LIKES_PER_SESSION:
-                    print(f"Hit max likes cap ({config.MAX_LIKES_PER_SESSION}). Stopping.")
+                if likes_sent >= session_like_cap:
+                    print(f"Hit max likes cap ({session_like_cap}). Stopping.")
                     break
             except Exception as e:
+                save_error_screenshot(f"do-like-failed-{profiles_seen}")
                 print(f"do_like failed: {e!r} — recovering by skipping this profile.")
                 try:
                     do_skip()
@@ -413,8 +454,13 @@ def main() -> int:
 
     print(f"\nDone. {likes_sent} likes sent across {profiles_seen} profiles.")
 
-    # Cleanup: go home and turn screen off
-    adb.go_home()
+    # Post-run report to Discord webhook (if configured)
+    report.post_run(likes_sent, profiles_seen, skips, total_cost, total_seconds,
+                    liked_profiles)
+
+    # Cleanup: force-stop Hinge so next run starts fresh regardless of app state,
+    # then turn screen off.
+    adb.force_stop_app("co.hinge.app")
     adb.turn_screen_off()
     return 0
 

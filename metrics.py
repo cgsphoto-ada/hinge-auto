@@ -14,20 +14,75 @@ from typing import Any
 import config
 
 
-# Sonnet 4.6 pricing per 1M tokens (USD). Update if Anthropic adjusts.
-PRICE_PER_MTOK = {
-    "input_tokens":                3.00,
-    "output_tokens":              15.00,
-    "cache_creation_input_tokens": 3.75,
-    "cache_read_input_tokens":     0.30,
+# Pricing per 1M tokens (USD). Resolved at import time based on the
+# active backend and model so cost estimates are always accurate even
+# when overridden via .env.
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    # ---------- Anthropic ----------
+    "claude-sonnet-4-6": {
+        "input_tokens":     3.00,
+        "output_tokens":   15.00,
+    },
+    "claude-haiku-4-5": {
+        "input_tokens":     0.80,
+        "output_tokens":    4.00,
+    },
+    "claude-opus-4-7": {
+        "input_tokens":    15.00,
+        "output_tokens":   75.00,
+    },
+    # ---------- Gemini ----------
+    "gemini-3.5-flash": {
+        "input_tokens":     1.50,
+        "output_tokens":    9.00,
+    },
+    "gemini-3.1-flash-lite": {
+        "input_tokens":     0.25,
+        "output_tokens":    1.50,
+    },
+    "gemini-3-flash-preview": {
+        "input_tokens":     0.30,
+        "output_tokens":    1.00,
+    },
+    # ---------- Ollama ----------
+    "qwen2.5-vl": {
+        "input_tokens":     0.0,   # free / local
+        "output_tokens":    0.0,
+    },
+    "llama3.2-vision": {
+        "input_tokens":     0.0,
+        "output_tokens":    0.0,
+    },
 }
+
+
+def _resolve_model_name() -> str:
+    """Return the active model name string based on backend config."""
+    backend = getattr(config, "JUDGE_BACKEND", "anthropic").lower()
+    if backend == "anthropic":
+        return getattr(config, "MODEL", "claude-sonnet-4-6")
+    if backend == "gemini":
+        return getattr(config, "GEMINI_MODEL", "gemini-3.1-flash-lite")
+    if backend == "ollama":
+        return getattr(config, "OLLAMA_MODEL", "qwen2.5-vl")
+    return "unknown"
+
+
+_ACTIVE_MODEL = _resolve_model_name()
+_PRICING = MODEL_PRICING.get(_ACTIVE_MODEL)
+if _PRICING is None:
+    print(f"[metrics] WARN: unknown model {_ACTIVE_MODEL!r}, cost will be $0 "
+          f"— add pricing to metrics.py")
+    _PRICING = {"input_tokens": 0.0, "output_tokens": 0.0}
 
 
 def estimated_cost(usage: dict[str, int]) -> float:
     """Dollar estimate from a usage dict returned by judge()."""
+    if not usage:
+        return 0.0
     return sum(
         usage.get(k, 0) * price / 1_000_000
-        for k, price in PRICE_PER_MTOK.items()
+        for k, price in _PRICING.items()
     )
 
 
@@ -46,6 +101,7 @@ def log_profile(
         "profile_idx": profile_idx,
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "mode": config.MODE_NAME,
+        "model": _ACTIVE_MODEL,
         "name": decision.name,
         "decision": decision.decision,
         "confidence": decision.confidence,
@@ -76,9 +132,10 @@ def print_running_totals(
     avg_cost = total_cost / profiles_seen if profiles_seen else 0
     avg_time = total_seconds / profiles_seen if profiles_seen else 0
     like_rate = likes_sent / profiles_seen if profiles_seen else 0
+    model_tag = _ACTIVE_MODEL.rsplit("-", 2)[0] if _ACTIVE_MODEL else "?"
     print(
         f"[totals] {profiles_seen} profiles | {likes_sent} likes "
         f"({like_rate:.0%}) | {skips} skips | "
         f"${total_cost:.3f} (~${avg_cost:.4f}/profile) | "
-        f"avg {avg_time:.1f}s/profile"
+        f"avg {avg_time:.1f}s/profile | {model_tag}"
     )
