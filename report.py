@@ -1,7 +1,7 @@
 """Post run results to Discord via webhook.
 
 Requires DISCORD_WEBHOOK_URL in the environment. No-op when unset.
-Sends a stats embed + profile photos as attachments on the same message.
+Sends profile photos first, then a stats summary at the end.
 """
 
 import json
@@ -24,16 +24,12 @@ def _send_multipart_payload(webhook_url: str, payload: dict,
     boundary = uuid.uuid4().hex
 
     body_parts = []
-
-    # payload_json field
     body_parts.append(
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="payload_json"\r\n'
         f"Content-Type: application/json\r\n\r\n"
         f"{json.dumps(payload)}\r\n"
     )
-
-    # File fields
     for i, (filename, data) in enumerate(files):
         body_parts.append(
             f"--{boundary}\r\n"
@@ -43,7 +39,6 @@ def _send_multipart_payload(webhook_url: str, payload: dict,
             + data
             + b"\r\n"
         )
-
     body_parts.append(f"--{boundary}--\r\n".encode())
 
     body = b"".join(
@@ -86,18 +81,16 @@ def _send_embed_only(webhook_url: str, embed: dict) -> None:
 def post_run(likes_sent: int, profiles_seen: int, skips: int,
              total_cost: float, total_duration_s: float,
              liked_profiles: list[dict] | None = None) -> None:
-    """Post stats + profile photos. Batches across multiple webhook calls
-    when more than 10 liked profiles to stay within Discord's attachment limit."""
+    """Post profile photos first, then a stats summary at the end."""
     webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
     if not webhook_url:
-        return  # silent no-op
+        return
 
     liked_profiles = liked_profiles or []
 
-    # Collect profile photos + text
+    # Collect profile photos
     liked_dir = config.DEBUG_DIR / "liked"
     profile_data: list[dict] = []
-
     for i, profile in enumerate(liked_profiles):
         name = profile.get("name", "unknown").capitalize()
         msg = profile.get("message", "") or "(no message)"
@@ -116,68 +109,79 @@ def post_run(likes_sent: int, profiles_seen: int, skips: int,
                         if candidate.is_file():
                             photo_bytes = candidate.read_bytes()
                             break
-        profile_data.append({
-            "name": name,
-            "msg": msg,
-            "bytes": photo_bytes,
-        })
+        profile_data.append({"name": name, "msg": msg, "bytes": photo_bytes})
 
-    # Split into batches of 10
+    if not profile_data:
+        embed = {
+            "title": "Hinge Auto — Run Complete",
+            "color": 0x57F287,
+            "fields": [
+                {"name": "👀 Seen",  "value": str(profiles_seen), "inline": True},
+                {"name": "❤️ Likes", "value": str(likes_sent),    "inline": True},
+                {"name": "⏭️ Skip",  "value": str(skips),         "inline": True},
+            ],
+            "footer": {"text": f"${total_cost:.2f} · {total_duration_s:.0f}s"},
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        }
+        _send_embed_only(webhook_url, embed)
+        return
+
+    # 1) Send profile photos in batches (photos first)
     batches = [
         profile_data[i:i + _DISCORD_ATTACHMENT_LIMIT]
         for i in range(0, len(profile_data), _DISCORD_ATTACHMENT_LIMIT)
     ]
-    total_batches = len(batches)
 
     for batch_idx, batch in enumerate(batches):
-        files_batch = []
-        for p in batch:
-            if p["bytes"]:
-                files_batch.append((f"{p['name']}_frame_00.png", p["bytes"]))
+        files_batch = [(f"{p['name']}_frame_00.png", p["bytes"])
+                       for p in batch if p["bytes"]]
 
         start_num = batch_idx * _DISCORD_ATTACHMENT_LIMIT + 1
-        end_num = start_num + len(batch) - 1
         profile_lines = "\n".join(
             f"{start_num + i}. **{p['name']}** — {p['msg']}"
             for i, p in enumerate(batch)
         )
+        label = f"Hinge Auto{f' ({start_num}-{start_num + len(batch) - 1})' if len(profile_data) > _DISCORD_ATTACHMENT_LIMIT else ''}"
 
-        if batch_idx == 0:
-            embed = {
-                "title": "Hinge Auto — Run Complete",
-                "color": 0x57F287,
-                "fields": [
-                    {"name": "👀 Seen",  "value": str(profiles_seen), "inline": True},
-                    {"name": "❤️ Likes", "value": str(likes_sent),    "inline": True},
-                    {"name": "⏭️ Skip",  "value": str(skips),         "inline": True},
-                    {
-                        "name": f"Liked{f' ({start_num}-{end_num})' if total_batches > 1 else ''}",
-                        "value": profile_lines if profile_data else "None",
-                        "inline": False,
-                    },
-                ],
-                "footer": {"text": f"${total_cost:.2f} · {total_duration_s:.0f}s"},
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-            }
-        else:
-            embed = {
-                "title": f"Hinge Auto — continued ({start_num}-{end_num})",
-                "color": 0x57F287,
-                "fields": [
-                    {"name": "Liked", "value": profile_lines, "inline": False},
-                ],
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-            }
+        embed = {
+            "title": label,
+            "color": 0x57F287,
+            "fields": [
+                {"name": "Liked", "value": profile_lines, "inline": False},
+            ],
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        }
 
+        payload = {"embeds": [embed]}
         if files_batch:
-            payload = {"embeds": [embed]}
             payload["attachments"] = [
                 {"id": i, "filename": fn, "description": f"Photo {start_num + i}"}
                 for i, (fn, _) in enumerate(files_batch)
             ]
-            _send_multipart_payload(webhook_url, payload, files_batch)
-        else:
-            _send_embed_only(webhook_url, embed)
+        _send_multipart_payload(webhook_url, payload, files_batch)
 
-        if batch_idx + 1 < total_batches:
+        if batch_idx + 1 < len(batches):
             time.sleep(0.5)
+
+    # 2) Send the stats summary at the end
+    time.sleep(0.5)
+    all_names = "\n".join(
+        f"{i + 1}. **{p['name']}** — {p['msg']}" for i, p in enumerate(profile_data)
+    )
+    summary_embed = {
+        "title": "Summary",
+        "color": 0x57F287,
+        "fields": [
+            {"name": "👀 Seen",  "value": str(profiles_seen), "inline": True},
+            {"name": "❤️ Likes", "value": str(likes_sent),    "inline": True},
+            {"name": "⏭️ Skip",  "value": str(skips),         "inline": True},
+            {
+                "name": "Liked",
+                "value": all_names if profile_data else "None",
+                "inline": False,
+            },
+        ],
+        "footer": {"text": f"${total_cost:.2f} · {total_duration_s:.0f}s"},
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+    }
+    _send_embed_only(webhook_url, summary_embed)
