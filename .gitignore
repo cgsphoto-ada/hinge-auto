@@ -23,6 +23,17 @@ calibrate.png
 # ...but README brand art is intentional, not capture data — keep it tracked
 !docs/assets/*.png
 
+# Runtime logs
+cron.log
+
+# Personal mode + voice configs (not shared)
+modes/carlos.py
+voice/carlos.py
+voice/carlos_no_msg.py
+
+# Test scripts
+test_webhook.py
+
 # Python
 __pycache__/
 *.pyc
