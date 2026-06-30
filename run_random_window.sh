@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Run hinge-auto on odd hours (9am-9pm).
-# Sleeps 0-30min so actual run lands between :00-:30.
 # Sleeps 0-20min so actual run lands between :00-:20.
 # Guarantees 40+ min buffer before next hour's job.
 
